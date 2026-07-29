@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Optional — if unset, weather service falls back to mock data
     WEATHER_API_KEY: str = ""
 
+    # Optional — if unset, route service returns a structured error response
+    OPENROUTESERVICE_API_KEY: str = ""
+
     @field_validator("SECRET_KEY")
     @classmethod
     def secret_key_must_be_set(cls, v: str) -> str:
