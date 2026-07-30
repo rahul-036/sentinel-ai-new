@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # Optional — if unset, route service returns a structured error response
     OPENROUTESERVICE_API_KEY: str = ""
 
+    # Optional — if unset, traffic service falls back to mock data
+    TOMTOM_API_KEY: str = ""
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def coerce_debug(cls, v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        return str(v).lower() in ("1", "true", "yes", "on")
+
     @field_validator("SECRET_KEY")
     @classmethod
     def secret_key_must_be_set(cls, v: str) -> str:

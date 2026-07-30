@@ -1,5 +1,6 @@
 import structlog
 from fastapi import Request, status
+from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -11,6 +12,9 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         try:
             return await call_next(request)
+        except HTTPException:
+            # Let FastAPI's own exception handler deal with HTTPException
+            raise
         except Exception as exc:
             request_id = structlog.contextvars.get_contextvars().get("request_id", "unknown")
             logger.exception("Unhandled exception", exc_info=exc)

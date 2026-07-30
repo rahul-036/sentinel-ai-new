@@ -59,9 +59,11 @@ def _evaluate_weather_risk(
         return 60, "Rain"
     if "snow" in cond_lower or "blizzard" in cond_lower or "sleet" in cond_lower:
         return 40, "Snow / Ice"
-    if "overcast" in cond_lower or "cloudy" in cond_lower:
+    if "overcast" in cond_lower:
+        return 75, "Overcast"
+    if cond_lower == "cloudy":
         return 75, "Cloudy"
-    # Clear, sunny, partly cloudy, etc.
+    # Clear, sunny, partly cloudy, etc. — preserve the original label
     return 85, condition
 
 

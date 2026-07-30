@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
@@ -34,9 +36,18 @@ def create_app() -> FastAPI:
         version=settings.VERSION,
         debug=settings.DEBUG,
         lifespan=lifespan,
-        docs_url="/docs" if settings.DEBUG else None,
+        docs_url=None,  # disabled — custom route below disables syntax highlighting
         redoc_url="/redoc" if settings.DEBUG else None,
     )
+
+    if settings.DEBUG:
+        @app.get("/docs", include_in_schema=False)
+        async def custom_swagger_ui() -> HTMLResponse:
+            return get_swagger_ui_html(
+                openapi_url="/openapi.json",
+                title=settings.APP_NAME,
+                swagger_ui_parameters={"syntaxHighlight": False},
+            )
 
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(RequestIDMiddleware)
@@ -50,8 +61,27 @@ def create_app() -> FastAPI:
 
     app.include_router(v1_router, prefix=settings.API_V1_PREFIX)
 
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": str(exc)},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        if isinstance(exc, HTTPException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+            )
         request_id = structlog.contextvars.get_contextvars().get("request_id", "unknown")
         logger.exception("Unhandled exception in route", exc_info=exc)
         return JSONResponse(

@@ -8,6 +8,47 @@ from pydantic import BaseModel, Field
 
 RiskLevel = Literal["Low", "Medium", "High", "Critical"]
 InfrastructureRating = Literal["Poor", "Fair", "Good", "Excellent", "Unknown"]
+PredictionLevel = Literal["Low", "Medium", "High", "Moderate"]
+
+
+# ---------------------------------------------------------------------------
+# Prediction schema
+# ---------------------------------------------------------------------------
+
+class PredictionResponse(BaseModel):
+    """Output of the AI Incident Prediction Agent."""
+    accident_probability: PredictionLevel
+    traffic_delay_probability: PredictionLevel
+    crime_probability: PredictionLevel
+    weather_impact: PredictionLevel
+    overall_future_risk: PredictionLevel
+    recommended_departure: str
+    ai_recommendation: str
+
+
+# ---------------------------------------------------------------------------
+# Emergency Response schemas
+# ---------------------------------------------------------------------------
+
+class EmergencyFacilityInfo(BaseModel):
+    """One nearest emergency facility with ETA."""
+    name: str
+    distance_km: Optional[float] = None
+    eta_minutes: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    available: bool = False
+
+
+class EmergencyResponseResult(BaseModel):
+    """Output of the Emergency Response Agent."""
+    activated: bool = False
+    trigger_reason: str = ""
+    nearest_police: EmergencyFacilityInfo
+    nearest_hospital: EmergencyFacilityInfo
+    nearest_fire_station: EmergencyFacilityInfo
+    emergency_contacts: dict[str, str] = Field(default_factory=dict)
+    status: str = "Standby"
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +97,18 @@ class FacilityDetail(BaseModel):
 # Public response schema
 # ---------------------------------------------------------------------------
 
+class CrimeLocationDetail(BaseModel):
+    """One crime area near the route — for Leaflet map markers."""
+
+    area: str
+    crime_index: int
+    risk_level: RiskLevel
+    latitude: float
+    longitude: float
+    dominant_crime_type: str
+    distance_m: float = Field(..., description="Shortest distance to the route in metres")
+
+
 class RiskAnalysisResponse(BaseModel):
     # ── Core ──────────────────────────────────────────────────────────────────
     safety_score: int = Field(..., ge=0, le=100)
@@ -67,6 +120,9 @@ class RiskAnalysisResponse(BaseModel):
     infrastructure: InfrastructureRating
     recommendation: str
     reason: str
+    # ── Crime intelligence ────────────────────────────────────────────────────
+    nearby_crimes: int = Field(default=0, ge=0)
+    crime_locations: list[CrimeLocationDetail] = Field(default_factory=list)
     # ── Weather detail ────────────────────────────────────────────────────────
     temperature_c: Optional[float] = None
     feels_like_c: Optional[float] = None
@@ -94,6 +150,23 @@ class RiskAnalysisResponse(BaseModel):
     facility_petrol_pumps: list[FacilityDetail] = Field(default_factory=list)
     facility_pharmacies: list[FacilityDetail] = Field(default_factory=list)
     facility_metro_stations: list[FacilityDetail] = Field(default_factory=list)
+    # ── Traffic intelligence ─────────────────────────────────────────────────────
+    traffic: str = "Unknown"
+    traffic_score: int = 50
+    traffic_rating: str = "Fair"
+    congestion_percentage: int = 0
+    average_speed_kph: float = 0.0
+    free_flow_speed_kph: float = 0.0
+    delay_minutes: float = 0.0
+    traffic_incidents: int = 0
+    traffic_live: bool = False
+    # ── Multi-route comparison ────────────────────────────────────────────────
+    routes: list["RouteOption"] = Field(default_factory=list)
+    recommended_index: int = 0
+    # ── Incident Prediction ───────────────────────────────────────────────────
+    prediction: Optional["PredictionResponse"] = None
+    # ── Emergency Response ───────────────────────────────────────────────────
+    emergency_response: Optional["EmergencyResponseResult"] = None
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +176,16 @@ class RiskAnalysisResponse(BaseModel):
 class CrimeAnalysis(BaseModel):
     crime_risk: RiskLevel
     score_contribution: int = Field(..., ge=0, le=100)
+
+
+class LiveCrimeAnalysis(BaseModel):
+    """Full output of the Crime Intelligence Agent."""
+
+    crime_risk: RiskLevel
+    nearby_crimes: int = Field(default=0, ge=0)
+    score_contribution: int = Field(..., ge=0, le=100)
+    crime_locations: list[CrimeLocationDetail] = Field(default_factory=list)
+    is_live: bool = False
 
 
 class WeatherAnalysis(BaseModel):
@@ -157,3 +240,47 @@ class RouteAnalysis(BaseModel):
         description="Ordered [lon, lat] pairs along the full route",
     )
     is_live: bool = False
+
+
+class TrafficAnalysis(BaseModel):
+    traffic: str
+    traffic_score: int = Field(..., ge=0, le=100)
+    traffic_rating: str
+    congestion_percentage: int = Field(..., ge=0, le=100)
+    average_speed_kph: float
+    free_flow_speed_kph: float
+    delay_minutes: float
+    incidents: int = Field(..., ge=0)
+    traffic_live: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Route Optimization schemas
+# ---------------------------------------------------------------------------
+
+class RouteOption(BaseModel):
+    """One candidate route with full analysis — returned by the Route Optimization Agent."""
+    route_index: int
+    preference: str = Field(..., description="ORS routing preference: recommended | fastest | shortest")
+    safety_score: int = Field(..., ge=0, le=100)
+    risk_level: RiskLevel
+    recommended: bool = False
+    distance_km: float
+    duration_min: float
+    crime_risk: RiskLevel
+    weather: str
+    infrastructure: InfrastructureRating
+    traffic: str
+    traffic_score: int
+    congestion_percentage: int
+    delay_minutes: float
+    geometry: Optional[RiskRouteGeometry] = None
+    crime_locations: list[CrimeLocationDetail] = Field(default_factory=list)
+
+
+class RouteOptimizationResponse(BaseModel):
+    source: str
+    destination: str
+    routes: list[RouteOption]
+    recommended_index: int = Field(..., description="Index of the safest route in the routes list")
+    fastest_index: int = Field(default=0, description="Index of the fastest route (minimum duration) in the routes list")
